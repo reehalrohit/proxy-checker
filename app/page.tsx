@@ -11,6 +11,8 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedProtocol, setSelectedProtocol] = useState("All");
   const [whatsappOnly, setWhatsappOnly] = useState(false);
+  const [onlyWorking, setOnlyWorking] = useState(false);
+  const [sortByPing, setSortByPing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   
   const itemsPerPage = 50;
@@ -44,14 +46,24 @@ export default function Home() {
   };
 
   const filteredProxies = useMemo(() => {
-    return proxies.filter(p => {
+    let result = proxies.filter(p => {
       const matchesSearch = p.ip.includes(searchTerm) || p.port.includes(searchTerm);
       const matchesProtocol = selectedProtocol === "All" || p.protocol.toUpperCase() === selectedProtocol.toUpperCase();
-      // WhatsApp requires ports 80, 443, or 5222
       const matchesWhatsApp = whatsappOnly ? (p.port === "80" || p.port === "443" || p.port === "5222") : true;
-      return matchesSearch && matchesProtocol && matchesWhatsApp;
+      const matchesWorking = onlyWorking ? proxyStatus[p.id]?.status === "working" : true;
+      return matchesSearch && matchesProtocol && matchesWhatsApp && matchesWorking;
     });
-  }, [proxies, searchTerm, selectedProtocol, whatsappOnly]);
+
+    if (sortByPing) {
+      result = [...result].sort((a, b) => {
+        const pingA = proxyStatus[a.id]?.status === "working" ? (proxyStatus[a.id]?.ping ?? 99999) : 99999;
+        const pingB = proxyStatus[b.id]?.status === "working" ? (proxyStatus[b.id]?.ping ?? 99999) : 99999;
+        return pingA - pingB;
+      });
+    }
+
+    return result;
+  }, [proxies, searchTerm, selectedProtocol, whatsappOnly, onlyWorking, sortByPing, proxyStatus]);
 
   const totalPages = Math.ceil(filteredProxies.length / itemsPerPage);
   const paginatedProxies = filteredProxies.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -64,7 +76,7 @@ export default function Home() {
     });
   };
 
-  useEffect(() => { setCurrentPage(1); }, [searchTerm, selectedProtocol, whatsappOnly]);
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, selectedProtocol, whatsappOnly, onlyWorking, sortByPing]);
 
   return (
     <main className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -75,18 +87,59 @@ export default function Home() {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-6">
-          <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 justify-between items-center">
+          <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col gap-4">
             
-            <div className="relative w-full xl:w-64">
-              <input type="text" placeholder="Search IP or Port..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black placeholder-slate-400" />
+            {/* Search & Top Action Row */}
+            <div className="flex flex-col sm:flex-row gap-3 justify-between items-center">
+              <div className="relative w-full sm:w-72">
+                <input 
+                  type="text" 
+                  placeholder="Search IP or Port..." 
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
+                  className="w-full pl-4 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black placeholder-slate-400" 
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
+                {/* Working Only Toggle */}
+                <button 
+                  onClick={() => setOnlyWorking(!onlyWorking)}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                    onlyWorking 
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" 
+                      : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                  }`}
+                >
+                  {onlyWorking ? "✓ Showing Working Only" : "Show Working Only"}
+                </button>
+
+                {/* Fastest First Toggle */}
+                <button 
+                  onClick={() => setSortByPing(!sortByPing)}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                    sortByPing 
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" 
+                      : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
+                  }`}
+                >
+                  {sortByPing ? "⚡ Fastest First" : "Sort: Fastest"}
+                </button>
+
+                <button 
+                  onClick={testCurrentPage} 
+                  className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm transition-colors"
+                >
+                  Scan Page
+                </button>
+              </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 justify-center items-center w-full xl:w-auto">
-              
-              {/* New WhatsApp Filter Button */}
+            {/* Protocol and Special Mode Filters */}
+            <div className="flex flex-wrap gap-2 items-center pt-2 border-t border-slate-200">
               <button 
                 onClick={() => setWhatsappOnly(!whatsappOnly)} 
-                className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors border ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${
                   whatsappOnly 
                     ? "bg-green-500 text-white border-green-500 shadow-sm" 
                     : "bg-white text-green-600 border-green-200 hover:bg-green-50"
@@ -95,17 +148,21 @@ export default function Home() {
                 {whatsappOnly ? "✓ WhatsApp Mode" : "WhatsApp Proxies"}
               </button>
 
-              <div className="h-6 w-px bg-slate-300 hidden md:block mx-1"></div>
+              <div className="h-4 w-px bg-slate-300 mx-1"></div>
 
               {protocols.map(proto => (
-                <button key={proto} onClick={() => setSelectedProtocol(proto)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${ selectedProtocol === proto ? "bg-indigo-600 text-white" : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-50" }`}>
+                <button 
+                  key={proto} 
+                  onClick={() => setSelectedProtocol(proto)} 
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${ 
+                    selectedProtocol === proto 
+                      ? "bg-indigo-600 text-white" 
+                      : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-50" 
+                  }`}
+                >
                   {proto}
                 </button>
               ))}
-              
-              <button onClick={testCurrentPage} className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm transition-colors md:ml-1">
-                Scan Page
-              </button>
             </div>
           </div>
           
@@ -125,7 +182,11 @@ export default function Home() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {paginatedProxies.length === 0 ? (
-                    <tr><td colSpan={5} className="px-6 py-12 text-center text-slate-500">No proxies match your filters.</td></tr>
+                    <tr>
+                      <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                        {onlyWorking ? "No working proxies scanned yet. Hit 'Scan Page' to verify live endpoints." : "No proxies match your filters."}
+                      </td>
+                    </tr>
                   ) : (
                     paginatedProxies.map(p => {
                       const st = proxyStatus[p.id];
