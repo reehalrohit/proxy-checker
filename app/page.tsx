@@ -6,13 +6,13 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   
-  // Test Status State: { id: { status: 'testing'|'working'|'dead', ping: number } }
   const [proxyStatus, setProxyStatus] = useState<Record<number, { status: string; ping?: number }>>({});
   
-  // Filter States
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedProtocol, setSelectedProtocol] = useState("All");
+  const [whatsappOnly, setWhatsappOnly] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  
   const itemsPerPage = 50;
   const protocols = ["All", "HTTP", "HTTPS", "SOCKS4", "SOCKS5"];
 
@@ -47,9 +47,11 @@ export default function Home() {
     return proxies.filter(p => {
       const matchesSearch = p.ip.includes(searchTerm) || p.port.includes(searchTerm);
       const matchesProtocol = selectedProtocol === "All" || p.protocol.toUpperCase() === selectedProtocol.toUpperCase();
-      return matchesSearch && matchesProtocol;
+      // WhatsApp requires ports 80, 443, or 5222
+      const matchesWhatsApp = whatsappOnly ? (p.port === "80" || p.port === "443" || p.port === "5222") : true;
+      return matchesSearch && matchesProtocol && matchesWhatsApp;
     });
-  }, [proxies, searchTerm, selectedProtocol]);
+  }, [proxies, searchTerm, selectedProtocol, whatsappOnly]);
 
   const totalPages = Math.ceil(filteredProxies.length / itemsPerPage);
   const paginatedProxies = filteredProxies.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -62,7 +64,7 @@ export default function Home() {
     });
   };
 
-  useEffect(() => { setCurrentPage(1); }, [searchTerm, selectedProtocol]);
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, selectedProtocol, whatsappOnly]);
 
   return (
     <main className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -73,20 +75,36 @@ export default function Home() {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-6">
-          <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row gap-4 justify-between items-center">
+          <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col xl:flex-row gap-4 justify-between items-center">
             
-            <div className="relative w-full md:w-72">
+            <div className="relative w-full xl:w-64">
               <input type="text" placeholder="Search IP or Port..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black placeholder-slate-400" />
             </div>
 
-            <div className="flex flex-wrap gap-2 justify-center w-full md:w-auto">
+            <div className="flex flex-wrap gap-2 justify-center items-center w-full xl:w-auto">
+              
+              {/* New WhatsApp Filter Button */}
+              <button 
+                onClick={() => setWhatsappOnly(!whatsappOnly)} 
+                className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors border ${
+                  whatsappOnly 
+                    ? "bg-green-500 text-white border-green-500 shadow-sm" 
+                    : "bg-white text-green-600 border-green-200 hover:bg-green-50"
+                }`}
+              >
+                {whatsappOnly ? "✓ WhatsApp Mode" : "WhatsApp Proxies"}
+              </button>
+
+              <div className="h-6 w-px bg-slate-300 hidden md:block mx-1"></div>
+
               {protocols.map(proto => (
                 <button key={proto} onClick={() => setSelectedProtocol(proto)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${ selectedProtocol === proto ? "bg-indigo-600 text-white" : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-50" }`}>
                   {proto}
                 </button>
               ))}
-              <button onClick={testCurrentPage} className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm transition-colors ml-2">
-                Scan Current Page
+              
+              <button onClick={testCurrentPage} className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm transition-colors md:ml-1">
+                Scan Page
               </button>
             </div>
           </div>
@@ -117,7 +135,6 @@ export default function Home() {
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-700 font-mono">{p.ip}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 font-mono">{p.port}</td>
                           
-                          {/* Latency Status Column */}
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             {!st && <span className="text-slate-400">Untested</span>}
                             {st?.status === 'testing' && <span className="text-amber-500 font-medium animate-pulse">Testing...</span>}
