@@ -7,7 +7,9 @@ export async function POST(req: Request) {
     if (!ip || !port) return NextResponse.json({ error: 'Missing IP or Port' }, { status: 400 });
 
     const start = Date.now();
-    return new Promise((resolve) => {
+    
+    // Explicitly type the Promise as <NextResponse> here
+    return new Promise<NextResponse>((resolve) => {
       const socket = new net.Socket();
       socket.setTimeout(2500);
       
