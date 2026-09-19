@@ -18,11 +18,29 @@ export default function Home() {
   const itemsPerPage = 50;
   const protocols = ["All", "HTTP", "HTTPS", "SOCKS4", "SOCKS5"];
 
+  // 1. Load data and saved cache on mount
   useEffect(() => {
+    const savedCache = localStorage.getItem("proxy-status-cache");
+    if (savedCache) {
+      try { setProxyStatus(JSON.parse(savedCache)); } catch (e) {}
+    }
+    
     fetch("/api/proxies")
       .then(res => res.json())
       .then(data => { setProxies(data); setLoading(false); });
   }, []);
+
+  // 2. Auto-save test results to local storage
+  useEffect(() => {
+    if (Object.keys(proxyStatus).length > 0) {
+      localStorage.setItem("proxy-status-cache", JSON.stringify(proxyStatus));
+    }
+  }, [proxyStatus]);
+
+  const clearCache = () => {
+    localStorage.removeItem("proxy-status-cache");
+    setProxyStatus({});
+  };
 
   const handleCopy = (text: string, id: number) => {
     navigator.clipboard.writeText(text);
@@ -76,6 +94,36 @@ export default function Home() {
     });
   };
 
+  const exportTXT = () => {
+    if (filteredProxies.length === 0) return;
+    const content = filteredProxies.map(p => p.full).join('\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `proxies-${new Date().toISOString().slice(0,10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportCSV = () => {
+    if (filteredProxies.length === 0) return;
+    const header = "Protocol,IP,Port,Status,Ping(ms)\n";
+    const rows = filteredProxies.map(p => {
+      const st = proxyStatus[p.id];
+      const status = st ? st.status : "untested";
+      const ping = st?.ping ? st.ping : "";
+      return `${p.protocol},${p.ip},${p.port},${status},${ping}`;
+    }).join('\n');
+    const blob = new Blob([header + rows], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `proxies-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   useEffect(() => { setCurrentPage(1); }, [searchTerm, selectedProtocol, whatsappOnly, onlyWorking, sortByPing]);
 
   return (
@@ -89,80 +137,52 @@ export default function Home() {
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-6">
           <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col gap-4">
             
-            {/* Search & Top Action Row */}
             <div className="flex flex-col sm:flex-row gap-3 justify-between items-center">
               <div className="relative w-full sm:w-72">
-                <input 
-                  type="text" 
-                  placeholder="Search IP or Port..." 
-                  value={searchTerm} 
-                  onChange={(e) => setSearchTerm(e.target.value)} 
-                  className="w-full pl-4 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black placeholder-slate-400" 
-                />
+                <input type="text" placeholder="Search IP or Port..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-4 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-black placeholder-slate-400" />
               </div>
 
               <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
-                {/* Working Only Toggle */}
-                <button 
-                  onClick={() => setOnlyWorking(!onlyWorking)}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-all ${
-                    onlyWorking 
-                      ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" 
-                      : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                  }`}
-                >
+                <button onClick={() => setOnlyWorking(!onlyWorking)} className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-all ${ onlyWorking ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100" }`}>
                   {onlyWorking ? "✓ Showing Working Only" : "Show Working Only"}
                 </button>
 
-                {/* Fastest First Toggle */}
-                <button 
-                  onClick={() => setSortByPing(!sortByPing)}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-all ${
-                    sortByPing 
-                      ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" 
-                      : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"
-                  }`}
-                >
+                <button onClick={() => setSortByPing(!sortByPing)} className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-all ${ sortByPing ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100" }`}>
                   {sortByPing ? "⚡ Fastest First" : "Sort: Fastest"}
                 </button>
 
-                <button 
-                  onClick={testCurrentPage} 
-                  className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm transition-colors"
-                >
+                <button onClick={testCurrentPage} className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm transition-colors">
                   Scan Page
                 </button>
               </div>
             </div>
 
-            {/* Protocol and Special Mode Filters */}
-            <div className="flex flex-wrap gap-2 items-center pt-2 border-t border-slate-200">
-              <button 
-                onClick={() => setWhatsappOnly(!whatsappOnly)} 
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${
-                  whatsappOnly 
-                    ? "bg-green-500 text-white border-green-500 shadow-sm" 
-                    : "bg-white text-green-600 border-green-200 hover:bg-green-50"
-                }`}
-              >
-                {whatsappOnly ? "✓ WhatsApp Mode" : "WhatsApp Proxies"}
-              </button>
-
-              <div className="h-4 w-px bg-slate-300 mx-1"></div>
-
-              {protocols.map(proto => (
-                <button 
-                  key={proto} 
-                  onClick={() => setSelectedProtocol(proto)} 
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${ 
-                    selectedProtocol === proto 
-                      ? "bg-indigo-600 text-white" 
-                      : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-50" 
-                  }`}
-                >
-                  {proto}
+            <div className="flex flex-col xl:flex-row justify-between items-center pt-2 border-t border-slate-200 gap-3">
+              <div className="flex flex-wrap gap-2 items-center">
+                <button onClick={() => setWhatsappOnly(!whatsappOnly)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${ whatsappOnly ? "bg-green-500 text-white border-green-500 shadow-sm" : "bg-white text-green-600 border-green-200 hover:bg-green-50" }`}>
+                  {whatsappOnly ? "✓ WhatsApp Mode" : "WhatsApp Proxies"}
                 </button>
-              ))}
+
+                <div className="h-4 w-px bg-slate-300 mx-1"></div>
+
+                {protocols.map(proto => (
+                  <button key={proto} onClick={() => setSelectedProtocol(proto)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${ selectedProtocol === proto ? "bg-indigo-600 text-white" : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-50" }`}>
+                    {proto}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap justify-center gap-2">
+                <button onClick={clearCache} className="px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 text-xs font-semibold rounded-lg hover:bg-red-100 transition-colors shadow-sm flex items-center gap-1">
+                  ⟲ Clear Memory
+                </button>
+                <button onClick={exportTXT} className="px-3 py-1.5 bg-slate-800 text-white text-xs font-semibold rounded-lg hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-1">
+                  ↓ .TXT
+                </button>
+                <button onClick={exportCSV} className="px-3 py-1.5 bg-slate-800 text-white text-xs font-semibold rounded-lg hover:bg-slate-700 transition-colors shadow-sm flex items-center gap-1">
+                  ↓ .CSV
+                </button>
+              </div>
             </div>
           </div>
           
@@ -204,10 +224,18 @@ export default function Home() {
                           </td>
                           
                           <td className="px-6 py-4 whitespace-nowrap text-right flex justify-end gap-2">
+                            
+                            {/* New Telegram Quick-Connect Button for SOCKS5 */}
+                            {p.protocol.toLowerCase() === 'socks5' && (
+                              <a href={`tg://socks?server=${p.ip}&port=${p.port}`} className="inline-flex px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 items-center transition-colors">
+                                Telegram
+                              </a>
+                            )}
+
                             <button onClick={() => testProxy(p.id, p.ip, p.port)} className="inline-flex px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-slate-600 border border-slate-300 hover:bg-slate-100">
                               Test
                             </button>
-                            <button onClick={() => handleCopy(p.full, p.id)} className={`inline-flex px-4 py-1.5 rounded-lg text-sm font-medium min-w-[75px] justify-center ${ copiedId === p.id ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-100" }`}>
+                            <button onClick={() => handleCopy(p.full, p.id)} className={`inline-flex px-4 py-1.5 rounded-lg text-sm font-medium min-w-[75px] justify-center transition-colors ${ copiedId === p.id ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-white text-slate-600 border border-slate-300 hover:bg-slate-100" }`}>
                               {copiedId === p.id ? "Copied" : "Copy"}
                             </button>
                           </td>
