@@ -15,8 +15,18 @@ export async function GET() {
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
       .map((proxy, index) => {
-        const [ip, port] = proxy.split(':');
-        return { id: index, ip, port, full: proxy };
+        let protocol = 'http';
+        let ipPort = proxy;
+        
+        // Strip the protocol if it exists
+        if (proxy.includes('://')) {
+          const parts = proxy.split('://');
+          protocol = parts[0];
+          ipPort = parts[1];
+        }
+        
+        const [ip, port] = ipPort.split(':');
+        return { id: index, protocol, ip, port, full: proxy };
       });
 
     return NextResponse.json(proxies);
